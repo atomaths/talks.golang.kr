@@ -1,0 +1,351 @@
+go test
+Jan 24, 2015
+
+Jongmin Kim
+GDG Korea Golang
+atomaths@gmail.com
+http://google.com/+JongminKim
+
+* Go Seoul Meetup
+
+This talk was presented at Go Seoul Meetup in January 2015.
+
+.link http://golang.kr GDG Korea Golang
+.link https://plus.google.com/u/0/events/cqac27nht0ects92dliq9e6qoic Google+
+.link http://onoffmix.com/event/39929 onoffmix
+
+
+* The basics
+
+* Go built-in testing framework
+
+Put the file in the same package as the one being tested.
+
+    *_test.go
+
+- import "testing"
+- "go test" command
+
+
+* Functions of the form
+
+	func ExampleXxx()
+	func TestXxx(*testing.T)
+	func BenchmarkXxx(*testing.B)
+	func TestMain(*testring.M)
+
+Where Xxx can be any alphanumeric string (but the first letter must not be in [a-z]) and serves to identify the test routine.
+
+Execution sequence: TestMain > ExampleXxx > TestXxx > BenchmarkXXX
+
+
+* func ExampleXxx()
+
+	func ExampleHello() {
+		fmt.Println("hello")
+		// Output: hello
+	}
+
+	func ExampleSalutations() {
+		fmt.Println("hello, and")
+		fmt.Println("goodbye")
+		// Output:
+		// hello, and
+		// goodbye
+	}
+
+Example functions without output comments are compiled but not executed.
+
+.link https://github.com/golang/go/blob/master/src/net/url/example_test.go#L16 net/url/example_test.go#L16
+
+
+* func TestXxx(*testing.T)
+
+*testing.T argument is used for manage test state and support formmated test logs. 
+
+	t.Errorf("Reverse(%q) == %q, want %q", in, got, want)
+	t.Fatalf("Frobnicate(%v) returned error: %v", arg, err)
+	t.Logf("iteration %v", i)
+
+And controlling whether a test runs at all:
+        
+	if runtime.GOARCH == "arm" {
+		t.Skip("this doesn't work on ARM")
+	}
+
+
+* Table-driven tests
+
+Go's struct literal syntax makes it easy to write table-driven tests:
+
+	func TestReverse(t *testing.T) {
+		var tests = []struct {
+			in, want string
+		}{
+			{"Hello, world", "dlrow ,olleH"},
+			{"Hello, 안녕", "녕안 ,olleH"},
+			{"", ""},
+		}
+
+		for _, test := range tests {
+			got := Reverse(test.in)
+			if got != test.want {
+				t.Errorf("Reverse(%q) == %q, want %q", test.in, got, test.want)
+			}
+		}
+	}
+
+
+* Running tests
+
+The go test command runs tests for the specified package. 
+(It defaults to the package in the current directory.)
+
+	$ go test
+	PASS
+	ok      encoding/json2.432s
+
+	$ go test -v
+	=== RUN TestMarshal
+	--- PASS: TestMarshal (0.00s)
+	...
+	PASS
+	ok      encoding/json2.467s
+
+To run the tests for all my projects:
+        
+	$ go test github.com/atomaths/...
+
+
+* Advanced techniques
+
+* Test coverage
+
+	$ go test -cover
+	PASS
+	coverage: 96.4% of statements
+	ok      strings    0.692s
+
+
+* Coverage visualization
+
+	$ go test -coverprofile=cover.out
+	$ go tool cover -html=cover.out
+
+.image go-test/cover.png
+
+
+* Test flag: -short
+
+The short flag requests that tests run more quickly, but its functionality
+is provided by test writers themselves.
+
+	$ go test -short
+
+	func TestTimeConsuming(t *testing.T) {
+		if testing.Short() {
+			t.Skip("skipping test in short mode.")
+		}
+		...
+	}
+
+
+* Test flag: -run
+
+The run flag requests that run only those tests and examples matching the regular expression.
+
+	$ go test -run=TestClient
+
+The command above will just run tests whose name starts with TestClient.
+
+More information:
+
+        $ go help testflag
+
+
+* func BenchmarkXxx(*testing.B)
+
+Run benchmarks matching the regular expression.
+By default, no benchmarks run. To run all benchmarks,
+
+	func BenchmarkReverse(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			Reverse("Hello")
+		}
+	}
+
+	$ go test -bench=.
+	PASS
+	BenchmarkReverse    10000000    182 ns/op
+	ok    github.com/atomaths/slides.golang.kr/2015/go-test/stringutil    2.018s
+
+
+* Benchmarking various inputs
+
+- Each benchmark is run for a minimum of 1 second by default.
+  If the second has not elapsed when the Benchmark function returns,
+  the value of b.N is increased in the sequence 1, 2, 5, 10, 20, 50, … and the function run again.
+
+- You can increase the minimum benchmark time using the -benchtime flag to produce a more accurate result.
+
+	$ go test -bench=Fib40 -benchtime=20s
+
+.link http://dave.cheney.net/2013/06/30/how-to-write-benchmarks-in-go How to write benchmarks in Go - Dave Cheney
+
+
+* func TestMain(*testring.M)
+
+Go 1.4 >=
+
+It is sometimes necessary for a test program to do extra setup or teardown before or after testing.
+
+	func TestMain(m *testing.M) {
+		fmt.Println("This gets run BEFORE any tests get run!")
+		exitCode := m.Run() // returns 0 if success otherwise 1
+		fmt.Println("This gets run AFTER any tests get run!")
+
+		os.Exit(exitCode)
+	}
+
+	func TestOne(t *testing.T) { log.Println("TestOne running") }
+	func TestTwo(t *testing.T) { log.Println("TestTwo running") }
+
+	// Output:
+	This gets run BEFORE any tests get run!
+	TestOne running
+	TestTwo running
+	PASS
+	This gets run AFTER any tests get run!
+	ok      github.com/atomaths/somepackagename        0.002s
+
+
+* Testing from the Main OS Thread
+
+It is also sometimes necessary for a test to control which code runs on the main thread.
+
+	func init() {
+		runtime.LockOSThread()
+	}
+
+	func TestMain(m *testing.Main) {
+		go func() {
+			os.Exit(m.Run())
+		}()
+		runGraphics()
+	}
+
+.link http://cs-guy.com/blog/2015/01/test-main/ TestMain—What is it Good For?
+.link http://stackoverflow.com/questions/25361831/benefits-of-runtime-lockosthread-in-golang Benefits of runtime.LockOSThread in golang - StackOverflow
+
+
+* Global Resource Checks
+
+	func TestMain(m *testing.M) {
+		exitCode := m.Run()
+		if exitCode == 0 && goroutineLeaked() {
+			os.Exit(1)
+		}
+		os.Exit(v)
+	}
+
+	// Verify the other tests didn't leave any goroutines running.
+	func goroutineLeaked() bool {
+		...
+	}
+
+.link https://github.com/golang/go/blob/master/src/net/http/main_test.go net/http/main_test.go
+
+
+* Subprocess tests
+
+Sometimes you need to test the behavior of a process, not just a function.
+
+	func Crasher() {
+		fmt.Println("Going down in flames!")
+		os.Exit(1)
+	}
+
+.link http://en.wikipedia.org/wiki/Crash-only_software Crash-only software
+
+
+* Subprocess tests
+
+To test this code, we invoke the test binary itself as a subprocess:
+
+	func TestMain(m *testing.M) {
+		switch os.Getenv("BE_CRASHER") {
+		case "1":
+			Crasher()
+		default:
+			os.Exit(m.Run())
+		}
+	}
+
+	func TestCrasher(t *testing.T) {
+		cmd := exec.Command(os.Args[0])
+		cmd.Env = append(os.Environ(), "BE_CRASHER=1")
+		err := cmd.Run()
+		if e, ok := err.(*exec.ExitError); ok && !e.Success() {
+			return
+		}
+		t.Fatalf("process ran with err %v, want exit status 1", err)
+	}
+
+
+* Mocks and fakes
+
+Go eschews mocks and fakes in favor of writing code that takes broad interfaces.
+For example, if you're writing a file format parser, don't write a function like this:
+
+	func Parse(f *os.File) error
+
+instead, write functions that take the interface you need:
+
+	func Parse(r io.Reader) error
+
+(An *os.File implements io.Reader, as does bytes.Buffer or strings.Reader.)
+
+.link http://talks.golang.org/2014/testing.slide#22 Testing Techniques at Google I/O 2014
+
+
+* Testing with concurrency
+
+When testing concurrent code, there's a temptation to use sleep; 
+it's easy and works most of the time.
+But "most of the time" isn't always and flaky tests result.
+We can use Go's concurrency primitives to make flaky sleep-driven tests reliable.
+
+.link http://talks.golang.org/2014/testing.slide#18 Testing Techniques at Google I/O 2014
+
+
+* Testing HTTP clients and servers
+
+The net/http/httptest package provides helpers for testing code that makes or serves HTTP requests.
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	    fmt.Fprintln(w, "Hello, client")
+	}))
+	defer ts.Close()
+
+	res, err := http.Get(ts.URL)
+	if err != nil {
+	    log.Fatal(err)
+	}
+	greeting, err := ioutil.ReadAll(res.Body)
+	res.Body.Close()
+	if err != nil {
+	    log.Fatal(err)
+	}
+
+	fmt.Printf("%s", greeting)
+
+
+* More information
+
+.link https://github.com/golang/go/wiki/LearnTesting Learn Tesing
+.link http://golang.org/pkg/testing/ Package testing
+.link https://talks.golang.org/2014/testing.slide Testing Techniques
+
+	$ go help test     // http://golang.org/cmd/go/#hdr-Test_packages
+	$ go help testfunc // http://golang.org/cmd/go/#hdr-Description_of_testing_functions
+	$ go help testflag // http://golang.org/cmd/go/#hdr-Description_of_testing_flags
